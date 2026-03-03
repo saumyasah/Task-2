@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: myapp
+spec:
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  source:
+    repoURL: https://github.com/saumyasah/Task-2
+    targetRevision: main
+    path: k8s/helm-chart
+  project: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
