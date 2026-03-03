@@ -1,0 +1,77 @@
+name: CI-CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+
+      - name: Install Dependencies
+        run: |
+          pip install -r app/requirements.txt
+          pip install flake8 pytest
+
+      - name: Set PYTHONPATH
+        run: echo "PYTHONPATH=$PWD" >> $GITHUB_ENV
+
+      - name: Lint
+        run: flake8 app/
+
+      - name: Run Tests
+        run: pytest
+
+
+  build-push-deploy:
+    needs: build-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: ACR Login
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build Image
+        run: docker build -t myapp:${{ github.sha }} -f app/Dockerfile app/
+
+      - name: Scan Image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: myapp:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          ignore-unfixed: true
+
+      - name: Tag Image
+        run: docker tag myapp:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/myapp:${{ github.sha }}
+
+      - name: Push Image
+        run: docker push ${{ secrets.ACR_LOGIN_SERVER }}/myapp:${{ github.sha }}
+
+      - name: Get AKS Credentials
+        run: az aks get-credentials --name dodo-aks --resource-group dodo-devops-rg --overwrite-existing
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Deploy to AKS
+        run: |
+          helm upgrade --install myapp ./k8s \
+            --set image.repository=${{ secrets.ACR_LOGIN_SERVER }}/myapp \
+            --set image.tag=${{ github.sha }}
