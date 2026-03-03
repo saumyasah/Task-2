@@ -72,6 +72,6 @@ jobs:
 
       - name: Deploy to AKS
         run: |
-          helm upgrade --install myapp ./k8s \
+          helm upgrade --install myapp ./k8s/helm-chart \
             --set image.repository=${{ secrets.ACR_LOGIN_SERVER }}/myapp \
             --set image.tag=${{ github.sha }}
